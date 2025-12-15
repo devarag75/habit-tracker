@@ -7,7 +7,7 @@
 <style>
 :root {
   --bg: #eef2ff;
-  --card: rgba(255,255,255,0.9);
+  --card: rgba(255,255,255,0.95);
   --text: #111;
   --grid: #ddd;
   --accent: #6366f1;
@@ -34,6 +34,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 12px;
 }
 
 .badge {
@@ -44,7 +45,12 @@ body {
   font-size: 12px;
 }
 
-button {
+.toggle {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -73,23 +79,29 @@ th, td {
   text-align: center;
 }
 
+th {
+  background: rgba(0,0,0,0.03);
+}
+
 td.done { background: #22c55e; color: white; }
 td.missed { background: #7f1d1d; color: #fecaca; }
 td.today { outline: 2px solid var(--accent); }
+
+.delete {
+  color: #ef4444;
+  cursor: pointer;
+  margin-left: 6px;
+}
 
 .spark {
   width: 60px;
   height: 18px;
 }
 
-.toggle {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 8px;
+canvas {
+  display: block;
+  width: 100%;
 }
-canvas { width: 100%; height: 300px; }
 </style>
 </head>
 
@@ -105,20 +117,20 @@ canvas { width: 100%; height: 300px; }
 </div>
 
 <div class="layout">
-<div class="card">
-  <table id="grid"></table>
-</div>
+  <div class="card">
+    <table id="grid"></table>
+  </div>
 
-<div class="card">
-  <canvas id="graph"></canvas>
-</div>
+  <div class="card">
+    <canvas id="mainGraph" width="600" height="300"></canvas>
+  </div>
 </div>
 
 </div>
 
 <script>
 const DAYS = 31;
-const STORAGE = "habit_tracker_final";
+const STORAGE = "habit_tracker_fixed";
 
 let state = JSON.parse(localStorage.getItem(STORAGE)) || {
   dark: false,
@@ -129,7 +141,8 @@ let state = JSON.parse(localStorage.getItem(STORAGE)) || {
 document.body.classList.toggle("dark", state.dark);
 
 const grid = document.getElementById("grid");
-const graph = document.getElementById("graph").getContext("2d");
+const mainCanvas = document.getElementById("mainGraph");
+const ctx = mainCanvas.getContext("2d");
 const percent = document.getElementById("percent");
 
 function save(){ localStorage.setItem(STORAGE, JSON.stringify(state)); }
@@ -140,76 +153,98 @@ function toggleTheme(){
   save();
 }
 
+function monthKey(){
+  return new Date().toISOString().slice(0,7);
+}
+
 function build(){
-  const m = new Date().toISOString().slice(0,7);
+  const m = monthKey();
   state.data[m] ||= {};
   const today = new Date().getDate();
 
   let html = `<tr><th>Habit</th><th>📈</th>`;
-  for(let d=1;d<=DAYS;d++) html+=`<th>${d}</th>`;
-  html+="</tr>";
+  for(let d=1; d<=DAYS; d++) html += `<th>${d}</th>`;
+  html += "</tr>";
 
-  state.habits.forEach(h=>{
-    html+=`<tr><th>${h}</th><td><canvas class="spark" id="s_${h}"></canvas></td>`;
-    for(let d=1;d<=DAYS;d++){
-      const k=h+"_"+d, v=state.data[m][k];
-      const past=d<today;
-      html+=`<td class="${v?'done':past?'missed':''}" 
-      ${!past?`onclick="toggle('${h}',${d})"`:''}>${v?'✔':past?'❌':''}</td>`;
+  state.habits.forEach(h => {
+    html += `<tr>
+      <th>${h}<span class="delete" onclick="deleteHabit('${h}')">✖</span></th>
+      <td><canvas class="spark" id="s_${h}" width="60" height="18"></canvas></td>`;
+
+    for(let d=1; d<=DAYS; d++){
+      const k = h+"_"+d;
+      const v = state.data[m][k];
+      const past = d < today;
+
+      html += `<td class="${v?'done':past?'missed':''}"
+        ${!past ? `onclick="toggle('${h}',${d})"` : ""}>
+        ${v?'✔':past?'❌':''}
+      </td>`;
     }
-    html+="</tr>";
+    html += "</tr>";
   });
 
-  grid.innerHTML=html;
-  drawMain();
+  grid.innerHTML = html;
+  drawMainGraph();
   state.habits.forEach(drawSpark);
   updatePercent();
 }
 
 function toggle(h,d){
-  const m=new Date().toISOString().slice(0,7);
-  const k=h+"_"+d;
-  state.data[m][k]=!state.data[m][k];
+  const m = monthKey();
+  const k = h+"_"+d;
+  state.data[m][k] = !state.data[m][k];
   save(); build();
 }
 
-function drawMain(){
-  graph.clearRect(0,0,600,300);
-  graph.beginPath();
-  graph.strokeStyle=getComputedStyle(document.body).getPropertyValue("--accent");
-  graph.lineWidth=1.2;
-  for(let d=1;d<=DAYS;d++){
-    let v=0;
-    state.habits.forEach(h=>{
-      if(state.data[new Date().toISOString().slice(0,7)][h+"_"+d])v++;
+function deleteHabit(h){
+  if(!confirm(`Delete "${h}"?`)) return;
+  state.habits = state.habits.filter(x => x !== h);
+  Object.values(state.data).forEach(month =>
+    Object.keys(month).forEach(k => k.startsWith(h+"_") && delete month[k])
+  );
+  save(); build();
+}
+
+function drawMainGraph(){
+  ctx.clearRect(0,0,600,300);
+  ctx.beginPath();
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent");
+  ctx.lineWidth = 1.2;
+
+  for(let d=1; d<=DAYS; d++){
+    let v = 0;
+    state.habits.forEach(h => {
+      if(state.data[monthKey()][h+"_"+d]) v++;
     });
-    const x=(d/DAYS)*600;
-    const y=300-v*25;
-    d===1?graph.moveTo(x,y):graph.lineTo(x,y);
+    const x = (d/DAYS)*600;
+    const y = 300 - v*25;
+    d===1 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
   }
-  graph.stroke();
+  ctx.stroke();
 }
 
 function drawSpark(h){
-  const c=document.getElementById("s_"+h).getContext("2d");
+  const c = document.getElementById("s_"+h).getContext("2d");
   c.clearRect(0,0,60,18);
   c.beginPath();
-  c.strokeStyle="#22c55e";
-  c.lineWidth=1;
-  for(let d=1;d<=DAYS;d++){
-    const v=state.data[new Date().toISOString().slice(0,7)][h+"_"+d];
-    const x=(d/DAYS)*60;
-    const y=v?5:15;
-    d===1?c.moveTo(x,y):c.lineTo(x,y);
+  c.strokeStyle = "#22c55e";
+  c.lineWidth = 1;
+
+  for(let d=1; d<=DAYS; d++){
+    const v = state.data[monthKey()][h+"_"+d];
+    const x = (d/DAYS)*60;
+    const y = v ? 4 : 14;
+    d===1 ? c.moveTo(x,y) : c.lineTo(x,y);
   }
   c.stroke();
 }
 
 function updatePercent(){
-  const m=new Date().toISOString().slice(0,7);
-  let t=DAYS*state.habits.length,d=0;
-  Object.values(state.data[m]).forEach(v=>v&&d++);
-  percent.textContent=Math.round((d/t)*100)+"%";
+  const m = monthKey();
+  let total = DAYS * state.habits.length, done = 0;
+  Object.values(state.data[m]).forEach(v => v && done++);
+  percent.textContent = Math.round((done/total)*100) + "%";
 }
 
 build();
