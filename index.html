@@ -6,102 +6,118 @@
 
 <style>
 :root {
-  --bg: #eef2ff;
-  --card: rgba(255,255,255,0.95);
-  --text: #111;
-  --grid: #ddd;
-  --accent: #6366f1;
+  --bg:#eef2ff; --card:#fff; --text:#111; --grid:#ddd;
+  --accent:#6366f1; --success:#22c55e; --danger:#dc2626;
 }
 
 body.dark {
-  --bg: #0f172a;
-  --card: #111827;
-  --text: #e5e7eb;
-  --grid: #374151;
-  --accent: #22d3ee;
+  --bg:#0f172a; --card:#111827; --text:#e5e7eb;
+  --grid:#374151; --accent:#22d3ee;
 }
 
 body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  background: linear-gradient(135deg, var(--bg), #f8fafc);
-  color: var(--text);
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
 }
 
-.app { padding: 18px; }
+.app { padding:16px; }
 
 .header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:10px;
 }
 
 .badge {
-  background: #22c55e;
-  color: white;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+  background:var(--success);
+  color:#fff;
+  padding:5px 10px;
+  border-radius:999px;
+  font-size:12px;
 }
 
-.toggle {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 8px;
-  cursor: pointer;
+button,select,input {
+  padding:6px 10px;
+  border-radius:8px;
+  border:1px solid var(--grid);
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: 62% 38%;
-  gap: 14px;
+button {
+  background:var(--accent);
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+
+.controls {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
 }
 
 .card {
-  background: var(--card);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 8px 22px rgba(0,0,0,.15);
+  background:var(--card);
+  border-radius:14px;
+  padding:12px;
+  margin-bottom:14px;
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+  overflow-x:auto;
 }
 
 table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
+  width:100%;
+  border-collapse:collapse;
+  font-size:11px;
 }
 
-th, td {
-  border: 1px solid var(--grid);
-  padding: 4px;
-  text-align: center;
+th,td {
+  border:1px solid var(--grid);
+  padding:4px;
+  text-align:center;
+  min-width:26px;
 }
 
 th {
-  background: rgba(0,0,0,0.03);
+  background:rgba(0,0,0,.04);
+  font-weight:600;
 }
 
-td.done { background: #22c55e; color: white; }
-td.missed { background: #7f1d1d; color: #fecaca; }
-td.today { outline: 2px solid var(--accent); }
+td.done { background:var(--success); color:white; }
+td.missed { color:var(--danger); font-weight:600; }
+td.locked { opacity:.6; cursor:not-allowed; }
+
+td.today {
+  outline:3px solid var(--accent);
+  outline-offset:-2px;
+}
+
+.progress {
+  height:6px;
+  background:#e5e7eb;
+  border-radius:999px;
+  overflow:hidden;
+}
+.progress div {
+  height:100%;
+  background:var(--accent);
+}
 
 .delete {
-  color: #ef4444;
-  cursor: pointer;
-  margin-left: 6px;
+  color:#ef4444;
+  cursor:pointer;
+  margin-left:6px;
 }
 
-.spark {
-  width: 60px;
-  height: 18px;
+.summary {
+  font-size:12px;
+  margin-top:6px;
 }
 
-canvas {
-  display: block;
-  width: 100%;
-}
+canvas { width:100%; display:block; }
 </style>
 </head>
 
@@ -109,144 +125,143 @@ canvas {
 <div class="app">
 
 <div class="header">
-  <h2>📘 Monthly Habit Tracker</h2>
+  <h3>📘 Monthly Habit Tracker</h3>
   <div>
-    <button class="toggle" onclick="toggleTheme()">🌙</button>
+    <button onclick="toggleTheme()">🌙</button>
     <span class="badge" id="percent">0%</span>
   </div>
 </div>
 
-<div class="layout">
-  <div class="card">
-    <table id="grid"></table>
-  </div>
+<div class="controls">
+  <select id="yearSelect"></select>
+  <select id="monthSelect"></select>
+  <input id="newHabit" placeholder="New habit">
+  <button onclick="addHabit()">Add</button>
+  <button onclick="resetMonth()">Reset Month</button>
+</div>
 
-  <div class="card">
-    <canvas id="mainGraph" width="600" height="300"></canvas>
-  </div>
+<div class="card">
+  <table id="grid"></table>
+</div>
+
+<div class="card">
+  <b>📈 Monthly Progress</b>
+  <canvas id="graph" width="600" height="160"></canvas>
+  <div class="summary" id="summary"></div>
 </div>
 
 </div>
 
 <script>
-const DAYS = 31;
-const STORAGE = "habit_tracker_fixed";
-
-let state = JSON.parse(localStorage.getItem(STORAGE)) || {
-  dark: false,
-  habits: ["Wake up early","Study","Coding","Exercise","No gaming"],
-  data: {}
+const STORAGE="habit_tracker_final";
+let state=JSON.parse(localStorage.getItem(STORAGE))||{
+  dark:false,
+  habits:["Wake up early","Study","Coding","Exercise","No gaming"],
+  data:{}
 };
 
-document.body.classList.toggle("dark", state.dark);
+document.body.classList.toggle("dark",state.dark);
 
-const grid = document.getElementById("grid");
-const mainCanvas = document.getElementById("mainGraph");
-const ctx = mainCanvas.getContext("2d");
-const percent = document.getElementById("percent");
+const grid=document.getElementById("grid");
+const graph=document.getElementById("graph");
+const ctx=graph.getContext("2d");
+const percent=document.getElementById("percent");
+const summary=document.getElementById("summary");
+const yearSelect=document.getElementById("yearSelect");
+const monthSelect=document.getElementById("monthSelect");
 
-function save(){ localStorage.setItem(STORAGE, JSON.stringify(state)); }
+function save(){ localStorage.setItem(STORAGE,JSON.stringify(state)); }
+function toggleTheme(){ state.dark=!state.dark; document.body.classList.toggle("dark",state.dark); save(); }
 
-function toggleTheme(){
-  state.dark = !state.dark;
-  document.body.classList.toggle("dark", state.dark);
-  save();
+function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+
+function initSelectors(){
+  const now=new Date();
+  for(let y=now.getFullYear()-1;y<=now.getFullYear()+1;y++){
+    yearSelect.innerHTML+=`<option>${y}</option>`;
+  }
+  yearSelect.value=now.getFullYear();
+
+  const months=[...Array(12).keys()];
+  months.forEach(m=>{
+    const d=new Date(2000,m,1);
+    monthSelect.innerHTML+=`<option value="${m}">${d.toLocaleString("default",{month:"long"})}</option>`;
+  });
+  monthSelect.value=now.getMonth();
 }
 
-function monthKey(){
-  return new Date().toISOString().slice(0,7);
+yearSelect.onchange=build;
+monthSelect.onchange=build;
+
+function key(){ return yearSelect.value+"-"+String(+monthSelect.value+1).padStart(2,"0"); }
+
+function isLocked(day,y,m){
+  const t=new Date();
+  if(y<t.getFullYear()||(y==t.getFullYear()&&m<t.getMonth())) return true;
+  if(y==t.getFullYear()&&m==t.getMonth()) return day<t.getDate();
+  return false;
 }
 
 function build(){
-  const m = monthKey();
-  state.data[m] ||= {};
-  const today = new Date().getDate();
+  const y=+yearSelect.value,m=+monthSelect.value;
+  const total=daysInMonth(y,m);
+  const k=key();
+  state.data[k] ||= {};
 
-  let html = `<tr><th>Habit</th><th>📈</th>`;
-  for(let d=1; d<=DAYS; d++) html += `<th>${d}</th>`;
-  html += "</tr>";
+  let html="<tr><th>Habit</th><th>Progress</th>";
+  for(let d=1;d<=total;d++) html+=`<th>${d}</th>`;
+  html+="</tr>";
 
-  state.habits.forEach(h => {
-    html += `<tr>
-      <th>${h}<span class="delete" onclick="deleteHabit('${h}')">✖</span></th>
-      <td><canvas class="spark" id="s_${h}" width="60" height="18"></canvas></td>`;
+  let bestStreak=0,totalDone=0;
 
-    for(let d=1; d<=DAYS; d++){
-      const k = h+"_"+d;
-      const v = state.data[m][k];
-      const past = d < today;
-
-      html += `<td class="${v?'done':past?'missed':''}"
-        ${!past ? `onclick="toggle('${h}',${d})"` : ""}>
-        ${v?'✔':past?'❌':''}
-      </td>`;
+  state.habits.forEach(h=>{
+    let done=0,streak=0,max=0;
+    for(let d=1;d<=total;d++){
+      if(state.data[k][h+"_"+d]){ done++; streak++; max=Math.max(max,streak);}
+      else streak=0;
     }
-    html += "</tr>";
+    bestStreak=Math.max(bestStreak,max);
+    totalDone+=done;
+
+    html+=`<tr><th>${h}<span class="delete" onclick="del('${h}')">✖</span></th>
+    <td><div class="progress"><div style="width:${done/total*100}%"></div></div></td>`;
+
+    for(let d=1;d<=total;d++){
+      const v=state.data[k][h+"_"+d];
+      const locked=isLocked(d,y,m);
+      const today=(y==new Date().getFullYear()&&m==new Date().getMonth()&&d==new Date().getDate());
+      html+=`<td class="${v?'done':locked?'missed locked':''} ${today?'today':''}"
+      ${locked?"":`onclick="toggle('${h}',${d})"`}>${v?"✔":locked?"✕":""}</td>`;
+    }
+    html+="</tr>";
   });
 
-  grid.innerHTML = html;
-  drawMainGraph();
-  state.habits.forEach(drawSpark);
-  updatePercent();
+  grid.innerHTML=html;
+  percent.textContent=Math.round(totalDone/(total*state.habits.length)*100)+"%";
+  drawGraph(k,total);
+  summary.textContent=`Consistency: ${percent.textContent} | Best streak: ${bestStreak} days`;
+  save();
 }
 
-function toggle(h,d){
-  const m = monthKey();
-  const k = h+"_"+d;
-  state.data[m][k] = !state.data[m][k];
-  save(); build();
-}
+function toggle(h,d){ state.data[key()][h+"_"+d]=!state.data[key()][h+"_"+d]; build(); }
+function addHabit(){ const v=newHabit.value.trim(); if(v&&!state.habits.includes(v)){state.habits.push(v); newHabit.value=""; build();}}
+function del(h){ if(confirm("Delete habit?")){state.habits=state.habits.filter(x=>x!=h); build();}}
+function resetMonth(){ if(confirm("Reset this month?")){state.data[key()]={}; build();}}
 
-function deleteHabit(h){
-  if(!confirm(`Delete "${h}"?`)) return;
-  state.habits = state.habits.filter(x => x !== h);
-  Object.values(state.data).forEach(month =>
-    Object.keys(month).forEach(k => k.startsWith(h+"_") && delete month[k])
-  );
-  save(); build();
-}
-
-function drawMainGraph(){
-  ctx.clearRect(0,0,600,300);
-  ctx.beginPath();
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--accent");
-  ctx.lineWidth = 1.2;
-
-  for(let d=1; d<=DAYS; d++){
-    let v = 0;
-    state.habits.forEach(h => {
-      if(state.data[monthKey()][h+"_"+d]) v++;
-    });
-    const x = (d/DAYS)*600;
-    const y = 300 - v*25;
-    d===1 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+function drawGraph(k,days){
+  ctx.clearRect(0,0,600,160);
+  ctx.strokeStyle="#ccc"; ctx.lineWidth=.5;
+  for(let i=1;i<=4;i++){ ctx.beginPath(); ctx.moveTo(0,i*40); ctx.lineTo(600,i*40); ctx.stroke(); }
+  ctx.beginPath(); ctx.strokeStyle="var(--accent)"; ctx.lineWidth=1.5;
+  for(let d=1;d<=days;d++){
+    let v=0; state.habits.forEach(h=>state.data[k][h+"_"+d]&&v++);
+    const x=d/days*600,y=160-v*25;
+    d==1?ctx.moveTo(x,y):ctx.lineTo(x,y);
   }
   ctx.stroke();
 }
 
-function drawSpark(h){
-  const c = document.getElementById("s_"+h).getContext("2d");
-  c.clearRect(0,0,60,18);
-  c.beginPath();
-  c.strokeStyle = "#22c55e";
-  c.lineWidth = 1;
-
-  for(let d=1; d<=DAYS; d++){
-    const v = state.data[monthKey()][h+"_"+d];
-    const x = (d/DAYS)*60;
-    const y = v ? 4 : 14;
-    d===1 ? c.moveTo(x,y) : c.lineTo(x,y);
-  }
-  c.stroke();
-}
-
-function updatePercent(){
-  const m = monthKey();
-  let total = DAYS * state.habits.length, done = 0;
-  Object.values(state.data[m]).forEach(v => v && done++);
-  percent.textContent = Math.round((done/total)*100) + "%";
-}
-
+initSelectors();
 build();
 </script>
 </body>
