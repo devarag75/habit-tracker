@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+        <meta charset="UTF-8">
+        <title>Monthly Habit Tracker Pro</title>
+
+        <style>
+                body {
+                        margin: 0;
+                        font-family: "Inter", system-ui, sans-serif;
+                        background: linear-gradient(135deg, #eef2ff, #f8fafc);
+                }
+
+                .app {
+                        padding: 18px;
+                }
+
+                .header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 14px;
+                }
+
+                .header h2 {
+                        margin: 0;
+                        font-weight: 600;
+                }
+
+                .badge {
+                        background: #22c55e;
+                        color: white;
+                        padding: 6px 10px;
+                        border-radius: 999px;
+                        font-size: 12px;
+                }
+
+                .controls input,
+                .controls select,
+                .controls button {
+                        padding: 6px 9px;
+                        font-size: 13px;
+                        border-radius: 8px;
+                        border: 1px solid #ccc;
+                }
+
+                .controls button {
+                        background: #4f46e5;
+                        color: white;
+                        border: none;
+                        cursor: pointer;
+                }
+
+                .layout {
+                        display: grid;
+                        grid-template-columns: 62% 38%;
+                        gap: 14px;
+                }
+
+                .card {
+                        background: rgba(255, 255, 255, 0.85);
+                        backdrop-filter: blur(6px);
+                        border-radius: 14px;
+                        padding: 12px;
+                        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
+                }
+
+                table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 11px;
+                }
+
+                th,
+                td {
+                        border: 1px solid #ddd;
+                        padding: 4px;
+                        text-align: center;
+                }
+
+                th {
+                        background: #f1f5f9;
+                        font-weight: 600;
+                }
+
+                td {
+                        cursor: pointer;
+                }
+
+                td.today {
+                        outline: 2px solid #6366f1;
+                }
+
+                td.done {
+                        color: white;
+                        font-weight: 600;
+                }
+
+                .graph-title {
+                        font-size: 14px;
+                        font-weight: 600;
+                        margin-bottom: 6px;
+                }
+
+                canvas {
+                        width: 100%;
+                        height: 320px;
+                }
+        </style>
+</head>
+
+<body>
+
+        <div class="app">
+
+                <div class="header">
+                        <h2>📘 Monthly Habit Tracker</h2>
+                        <div class="badge" id="percent">0% Complete</div>
+                </div>
+
+                <div class="controls">
+                        <select id="monthPicker"></select>
+                        <input id="newHabit" placeholder="New habit">
+                        <button onclick="addHabit()">Add</button>
+                </div>
+
+                <div class="layout">
+
+                        <div class="card">
+                                <table id="grid"></table>
+                        </div>
+
+                        <div class="card">
+                                <div class="graph-title">📈 Monthly Discipline Curve</div>
+                                <canvas id="graph"></canvas>
+                        </div>
+
+                </div>
+        </div>
+
+        <script>
+                const DAYS = 31;
+                const STORAGE = "monthly_tracker_pro";
+
+                let state = JSON.parse(localStorage.getItem(STORAGE)) || {
+                        habits: ["Wake up early", "Study", "Coding practice", "Exercise", "No gaming"],
+                        data: {}
+                };
+
+                const grid = document.getElementById("grid");
+                const monthPicker = document.getElementById("monthPicker");
+                const canvas = document.getElementById("graph");
+                const ctx = canvas.getContext("2d");
+                const percentBadge = document.getElementById("percent");
+
+                function save() {
+                        localStorage.setItem(STORAGE, JSON.stringify(state));
+                }
+
+                function initMonths() {
+                        const now = new Date();
+                        for (let i = -6; i <= 6; i++) {
+                                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                                const key = d.toISOString().slice(0, 7);
+                                const opt = document.createElement("option");
+                                opt.value = key;
+                                opt.text = d.toLocaleString("default", { month: "long", year: "numeric" });
+                                monthPicker.appendChild(opt);
+                        }
+                        monthPicker.value = now.toISOString().slice(0, 7);
+                }
+
+                function buildGrid() {
+                        const month = monthPicker.value;
+                        if (!state.data[month]) state.data[month] = {};
+
+                        const today = new Date().getDate();
+
+                        let html = "<tr><th>Habit / Day</th>";
+                        for (let d = 1; d <= DAYS; d++) html += `<th>${d}</th>`;
+                        html += "</tr>";
+
+                        state.habits.forEach(habit => {
+                                html += `<tr><th>${habit}</th>`;
+                                for (let d = 1; d <= DAYS; d++) {
+                                        const key = habit + "_" + d;
+                                        const done = state.data[month][key];
+
+                                        let intensity = 0;
+                                        if (done) {
+                                                intensity = Math.min(255, 120 + completedDayCount(d) * 20);
+                                        }
+
+                                        html += `<td class="${done ? "done" : ""} ${d === today ? "today" : ""}"
+        style="background:${done ? `rgb(34,${intensity},94)` : ""}"
+        onclick="toggle('${habit}',${d},this)">
+        ${done ? "✔" : ""}
+      </td>`;
+                                }
+                                html += "</tr>";
+                        });
+
+                        grid.innerHTML = html;
+                        updatePercent();
+                        drawGraph();
+                }
+
+                function completedDayCount(day) {
+                        const month = monthPicker.value;
+                        let count = 0;
+                        state.habits.forEach(h => {
+                                if (state.data[month][h + "_" + day]) count++;
+                        });
+                        return count;
+                }
+
+                function toggle(habit, day, cell) {
+                        const month = monthPicker.value;
+                        const key = habit + "_" + day;
+                        state.data[month][key] = !state.data[month][key];
+                        save();
+                        buildGrid();
+                }
+
+                function addHabit() {
+                        const input = document.getElementById("newHabit");
+                        if (!input.value.trim()) return;
+                        state.habits.push(input.value.trim());
+                        input.value = "";
+                        save();
+                        buildGrid();
+                }
+
+                function updatePercent() {
+                        const month = monthPicker.value;
+                        let total = DAYS * state.habits.length;
+                        let done = 0;
+
+                        Object.values(state.data[month]).forEach(v => {
+                                if (v) done++;
+                        });
+
+                        const p = total ? Math.round((done / total) * 100) : 0;
+                        percentBadge.textContent = `${p}% Complete`;
+                }
+
+                function drawGraph() {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                        const month = monthPicker.value;
+                        const w = canvas.width;
+                        const h = canvas.height;
+
+                        ctx.strokeStyle = "#c7d2fe";
+                        ctx.lineWidth = 1;
+                        for (let i = 0; i <= 5; i++) {
+                                const y = h - (i / 5) * h;
+                                ctx.beginPath();
+                                ctx.moveTo(0, y);
+                                ctx.lineTo(w, y);
+                                ctx.stroke();
+                        }
+
+                        ctx.beginPath();
+                        ctx.strokeStyle = "#4f46e5";
+                        ctx.lineWidth = 3;
+
+                        for (let d = 1; d <= DAYS; d++) {
+                                const v = completedDayCount(d);
+                                const x = (d / DAYS) * w;
+                                const y = h - v * 25;
+                                if (d === 1) ctx.moveTo(x, y);
+                                else ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                }
+
+                monthPicker.onchange = buildGrid;
+
+                initMonths();
+                buildGrid();
+        </script>
+
+</body>
+
+</html>
